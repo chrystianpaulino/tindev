@@ -1,0 +1,275 @@
+import React, {useEffect, useState} from 'react';
+import {View, Image, SafeAreaView, StyleSheet, Text, TouchableOpacity} from 'react-native';
+
+import logo from '../assets/logo.png';
+import like from '../assets/like.png';
+import dislike from '../assets/dislike.png';
+import itsamatch from '../assets/itsamatch.png';
+
+import api from '../services/api';
+
+import AsyncStorage from '@react-native-community/async-storage';
+
+import io from 'socket.io-client';
+
+
+// exportar por padrão
+export default function Main({navigation}){
+
+    const id = navigation.getParam('user');
+
+    const [users, setUsers]         = useState([]);
+    const [matchDev, setMatchDev]   = useState(null);
+
+    useEffect(() => {
+        async function loadUsers(){
+            console.log('useEffect 1');
+            const response = await api.get('/devs', {
+                headers:{
+                    user: id,
+                }
+            })
+
+            setUsers(response.data);
+            console.log('matchDev: ' + matchDev);
+        }
+        loadUsers();
+    }, [id]);
+
+    useEffect(() => {
+        console.log('useEffect 2');
+        console.log('matchDev: ' + matchDev);
+        console.log(id);
+        // conectar com o backand
+        const socket = io('http://192.168.1.56:3333', {
+        // const socket = io('http://localhost:3333', {
+            query: {user: id} // query parametros opcionais na coneção
+        });
+
+
+        // ver se tem chave de 'match'
+        socket.on('match', dev => {
+            console.log('match react-native');
+            console.log(dev);
+            setMatchDev(dev);
+        });
+    }, [id]);
+
+    async function handleLike(){
+        // id do usuario que ta aparecendo na lista
+        const [user, ...rest] = users; // const user = users[0]; PEGA O [0] E BOTA O RESTO EM REST
+        await api.post(`/devs/${user._id}/likes`, null, {
+            headers: {user: id},
+        })
+        setUsers(rest);
+    }
+
+    async function handleDislike(){
+        // id do usuario que ta aparecendo na lista
+        const [user, ...rest] = users; // const user = users[0]; PEGA O [0] E BOTA O RESTO EM REST
+
+        await api.post(`/devs/${user._id}/dislikes`, null, {
+            headers: {user: id},
+        })
+        setUsers(rest);
+    }
+
+    async function handleLogout(){
+        await AsyncStorage.clear();
+        navigation.navigate('Login');
+    }
+
+    return(
+        <SafeAreaView style style={styles.container}>
+            <TouchableOpacity onPress={handleLogout}>
+                <Image style={styles.logo} source={logo}/>
+            </TouchableOpacity>
+
+            {/* users.map para percorrer os users */}
+            <View style={styles.cardsContainer}>
+                { users.length === 0
+                ? <Text style={styles.empty}> Acabou :( </Text>
+                : (
+                    users.map ((user, index) => (
+                        <View key={user._id} style={[styles.card, {zIndex: users.length - index}]}>
+                            {/* zIndex vai do mais alto para o mais baixo para que o primeiro fique na frente dos ouros */}
+                            <Image style={styles.avatar} source={{uri: user.avatar}}/>
+                            <View style={styles.footer}>
+                                <Text style={styles.name}>{user.name}</Text>
+                                <Text style={styles.bio} numberOfLines={3}>{user.bio}</Text>
+                            </View>
+                        </View>
+                    )) 
+                )}
+            </View>
+
+            { users.length > 0 && (
+                    <View style={styles.buttonsContainer}>
+                        <TouchableOpacity style={styles.button} onPress={handleDislike}>
+                            <Image style={styles.dislike} source={dislike}/>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.button} onPress={handleLike}>
+                            <Image style={styles.like} source={like}/>
+                        </TouchableOpacity>
+                    </View>
+                )
+            }
+
+            {/* se tiver alguma coisa dentro de matchDev */}
+            { matchDev && (
+                <View style={styles.matchContainer}>
+                    <Image style={styles.matchImage} source={itsamatch}/>
+                    <Image style={styles.matchAvatar} source={{ uri: matchDev.avatar}}/>
+
+                    <Text style={styles.matchName}>{matchDev.name}</Text>
+                    <Text style={styles.matchBio}>{matchDev.bio}</Text>
+
+                    <TouchableOpacity onPress={() => setMatchDev(null)}>
+                        <Text style={styles.closeMatch}>FECHAR</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
+        </SafeAreaView>
+    );
+}
+
+const styles = StyleSheet.create({
+
+    container:{
+        flex: 1,
+        backgroundColor: '#f5f5f5',
+        alignItems: 'center',
+        justifyContent: 'space-between'
+    },
+
+
+    logo: {
+        marginTop: 30
+    },
+
+    empty: {
+        alignSelf: 'center',
+        color: '#999',
+        fontSize: 24,
+        fontWeight: 'bold',
+    },
+
+    cardsContainer:{
+        flex: 1,
+        alignSelf: 'stretch',
+        justifyContent: 'center',
+        maxHeight: 500,
+    },
+    card:{
+        borderWidth: 1,
+        borderColor: '#DDD',
+        borderRadius: 8,
+        margin: 30,
+        overflow: 'hidden',
+        // um em cima do outro
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+    },
+
+    avatar:{
+        flex: 1,
+        height: 300,
+    },
+
+    footer: {
+        backgroundColor: '#FFF',
+        paddingHorizontal: 20,
+        paddingVertical: 15,
+    },
+
+    name: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#333',
+    },
+
+    bio: {
+        fontSize: 14,
+        color: '#999',
+        lineHeight: 18,
+    },
+
+    buttonsContainer:{
+        // botoes do lado
+        flexDirection: 'row',
+        marginBottom: 30
+    },
+
+    button: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: '#FFF',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginHorizontal: 20,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+    },
+
+    matchContainer: {
+        // TUDO ZERO
+        ...StyleSheet.absoluteFillObject,
+        // position: 'absolute',
+        // top: 0,
+        // left: 0,
+        // right: 0,
+        // bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    matchImage: {
+        // altura
+        height: 60,
+        resizeMode: 'contain',
+    },
+
+    matchAvatar: {
+        width: 160,
+        height: 160,
+        borderRadius: 80,
+        borderWidth: 5,
+        borderColor: '#FFF',
+        marginVertical: 30,
+    },
+
+    matchName: {
+        fontSize: 26,
+        fontWeight: 'bold',
+        color: '#FFF',
+    },
+
+    matchBio: {
+        marginTop: 10,
+        fontSize: 16,
+        color: 'rgba(255, 255, 255, 0.8)',
+        lineHeight: 24,
+        textAlign: 'center',
+        paddingHorizontal: 30
+    },
+    
+    closeMatch: {
+        fontSize: 16,
+        color: 'rgba(255, 255, 255, 0.8)',
+        textAlign: 'center',
+        marginTop: 30,
+        fontWeight: 'bold',
+    },
+
+});
